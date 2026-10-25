@@ -32,12 +32,20 @@ body {
   font-family: var(--sans);
   color: var(--text);
   background:
-    radial-gradient(1200px 600px at 10% -10%, #134e4a 0%, transparent 55%),
-    radial-gradient(900px 500px at 110% 10%, #1e3a5f 0%, transparent 50%),
+    radial-gradient(
+      1000px 650px at var(--glow-x, 10%) var(--glow-y, 0%),
+      rgba(19, 78, 74, 0.85) 0%,
+      transparent 60%
+    ),
+    radial-gradient(
+      900px 600px at 100% 10%,
+      rgba(30, 58, 95, 0.75) 0%,
+      transparent 55%
+    ),
     linear-gradient(180deg, var(--bg-0), var(--bg-1));
+  background-attachment: fixed;
   -webkit-font-smoothing: antialiased;
 }
-
 button,
 input {
   font: inherit;
