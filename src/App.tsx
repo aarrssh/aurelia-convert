@@ -1,34 +1,10 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
-import {
-  fetchCurrencies,
-  fetchRate,
-  type Currency,
-  type ExchangeRate,
-} from './api/frankfurter'
+import { fetchCurrencies, fetchRate } from './api/frankfurter'
 import { CurrencySelect } from './components/CurrencySelect'
+import type { Currency, ExchangeRate } from './types/currency'
+import type { Expense, Trip } from './types/trip'
+import { formatMoney, formatRate, parseAmount } from './utils/formatters'
 import './App.css'
-
-type Trip = {
-  id: string
-  name: string
-  destination: string
-  homeCurrency: string
-  budget: number
-  createdAt: string
-}
-
-type Expense = {
-  id: string
-  tripId: string
-  description: string
-  amount: number
-  currency: string
-  homeCurrency: string
-  homeAmount: number
-  rate: number
-  rateDate: string
-  createdAt: string
-}
 function QuickExpenses({ trip }: { trip: Trip }) {
   const storageKey = `aurelia-expenses-${trip.id}`
 
@@ -331,31 +307,6 @@ function TripsDashboard() {
       </div>
     </section>
   )
-}
-function parseAmount(value: string): number | null {
-  const trimmed = value.trim()
-  if (!trimmed) return null
-  const amount = Number(trimmed.replace(/,/g, ''))
-  if (!Number.isFinite(amount) || amount < 0) return null
-  return amount
-}
-
-function formatMoney(amount: number, currency: string): string {
-  try {
-    return new Intl.NumberFormat(undefined, {
-      style: 'currency',
-      currency,
-      maximumFractionDigits: 6,
-    }).format(amount)
-  } catch {
-    return `${amount.toLocaleString(undefined, { maximumFractionDigits: 6 })} ${currency}`
-  }
-}
-
-function formatRate(rate: number): string {
-  return rate.toLocaleString(undefined, {
-    maximumFractionDigits: rate >= 1 ? 4 : 6,
-  })
 }
 
 export default function App() {

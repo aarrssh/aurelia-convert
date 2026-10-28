@@ -1,17 +1,8 @@
+import type { Currency, ExchangeRate } from '../types/currency'
+
+export type { Currency, ExchangeRate }
+
 const API_BASE = 'https://api.frankfurter.dev/v2'
-
-export type Currency = {
-  iso_code: string
-  name: string
-  symbol: string | null
-}
-
-export type ExchangeRate = {
-  date: string
-  base: string
-  quote: string
-  rate: number
-}
 
 async function readError(response: Response): Promise<string> {
   try {
