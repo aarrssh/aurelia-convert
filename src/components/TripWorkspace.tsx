@@ -3,12 +3,14 @@ import type { Trip } from '../types/trip'
 import { formatMoney } from '../utils/formatters'
 import { ExpenseTracker } from './ExpenseTracker'
 import { ItineraryPlanner } from './ItineraryPlanner'
+import { Journal } from './Journal'
 
 type TripWorkspaceProps = {
   trip: Trip
   onBack: () => void
-  onUpdateTrip: (updatedTrip: Trip) => void
-  onDeleteTrip: (tripId: string) => void
+  onUpdateTrip: (updatedTrip: Trip) => boolean
+  onDeleteTrip: (tripId: string) => boolean
+  storageError: string | null
 }
 
 export function TripWorkspace({
@@ -16,6 +18,7 @@ export function TripWorkspace({
   onBack,
   onUpdateTrip,
   onDeleteTrip,
+  storageError,
 }: TripWorkspaceProps) {
   const [activeTab, setActiveTab] = useState<'planner' | 'spending' | 'journal'>('planner')
   const [isEditing, setIsEditing] = useState(false)
@@ -57,9 +60,10 @@ export function TripWorkspace({
       endDate: editEndDate || undefined,
     }
 
-    onUpdateTrip(updated)
-    setEditError(null)
-    setIsEditing(false)
+    if (onUpdateTrip(updated)) {
+      setEditError(null)
+      setIsEditing(false)
+    }
   }
 
   function handleCancelSettings() {
@@ -91,6 +95,7 @@ export function TripWorkspace({
   return (
     <section className="trip-workspace">
       <header className="workspace-header">
+        {storageError && <div className="banner error" role="alert"><p>{storageError}</p></div>}
         <div className="workspace-top-bar">
           <button type="button" className="back-link" onClick={onBack}>
             ← Back to My Trips
@@ -257,26 +262,7 @@ export function TripWorkspace({
           </div>
         )}
 
-        {activeTab === 'journal' && (
-          <div className="workspace-section journal-placeholder-section">
-            <div className="phase-preview-card highlight-card">
-              <span className="preview-badge">Coming in Phase 6</span>
-              <h3>Personal Travel Journal</h3>
-              <p>
-                A distraction-free, text-first editorial space designed for thoughtful reflection during your time in {trip.destination}.
-              </p>
-            </div>
-
-            <article className="journal-quote-card">
-              <blockquote className="journal-quote">
-                “Travel is not only the places you stand in, but the thoughts you have while looking out of a train window, the small conversations with strangers, and the quiet discoveries along the way.”
-              </blockquote>
-              <p className="journal-quote-note">
-                Your future journal will feature date-stamped reflections, location mood tags, and an editorial reading layout.
-              </p>
-            </article>
-          </div>
-        )}
+        {activeTab === 'journal' && <Journal trip={trip} />}
       </main>
     </section>
   )

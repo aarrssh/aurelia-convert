@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type { Trip } from '../types/trip'
 import { formatMoney } from '../utils/formatters'
 
@@ -8,119 +9,171 @@ type HomeDashboardProps = {
   onOpenConverter: () => void
 }
 
-export function HomeDashboard({
-  trips,
-  onOpenTrip,
-  onPlanTrip,
-  onOpenConverter,
-}: HomeDashboardProps) {
-  const totalBudgetAcrossTrips = trips.reduce((sum, trip) => sum + trip.budget, 0)
-  const primaryCurrency = trips[0]?.homeCurrency ?? 'USD'
-  const isSingleCurrency = trips.every((t) => t.homeCurrency === primaryCurrency)
+function getTripDateLabel(trip: Trip): string {
+  if (!trip.startDate) return 'Dates to be decided'
+
+  const formatDate = (value: string) => {
+    const date = new Date(`${value}T12:00:00`)
+    return Number.isNaN(date.getTime())
+      ? value
+      : date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+  }
+
+  return `${formatDate(trip.startDate)}${trip.endDate ? ` — ${formatDate(trip.endDate)}` : ''}`
+}
+
+function JourneyCard({
+  trip,
+  past = false,
+  index,
+  onOpen,
+}: {
+  trip: Trip
+  past?: boolean
+  index: number
+  onOpen: () => void
+}) {
+  return (
+    <article className={`journey-card${past ? ' journey-card-past' : ''}`}>
+      <div className={`journey-card-art journey-art-${index % 3}`} aria-hidden="true">
+        <span className="journey-art-sun" />
+        <span className="journey-art-horizon" />
+        <span className="journey-card-stamp">{past ? 'Remembered' : 'On the horizon'}</span>
+      </div>
+      <div className="journey-card-content">
+        <p className="journey-destination">{trip.destination}</p>
+        <h4>{trip.name}</h4>
+        <p className="journey-date">{getTripDateLabel(trip)}</p>
+        <div className="journey-card-footer">
+          <span>Budget · {formatMoney(trip.budget, trip.homeCurrency)}</span>
+          <button type="button" className="journey-open-link" onClick={onOpen}>
+            Open trip <span aria-hidden="true">↗</span>
+          </button>
+        </div>
+      </div>
+    </article>
+  )
+}
+
+export function HomeDashboard({ trips, onOpenTrip, onPlanTrip, onOpenConverter }: HomeDashboardProps) {
+  const [today] = useState(() => new Date().toISOString().slice(0, 10))
+  const previousTrips = trips.filter((trip) => {
+    const finalDate = trip.endDate || trip.startDate
+    return Boolean(finalDate && finalDate < today)
+  })
+  const previousTripIds = new Set(previousTrips.map((trip) => trip.id))
+  const upcomingTrips = trips.filter((trip) => !previousTripIds.has(trip.id))
 
   return (
-    <section className="home-dashboard">
-      <header className="home-hero">
-        <div className="home-hero-text">
-          <p className="eyebrow">Personal Travel Companion</p>
-          <h2>Aurelia</h2>
+    <main className="home-dashboard">
+      <section className="home-hero" aria-labelledby="home-title">
+        <div className="home-hero-copy">
+          <p className="eyebrow home-eyebrow"><span aria-hidden="true">✳</span> A little more elsewhere</p>
+          <h1 id="home-title">The best stories<br />begin <em>somewhere.</em></h1>
           <p className="home-microcopy">
-            A quiet space for planning thoughtful journeys, converting currencies, and staying on budget.
+            Make room for the long way round, late lunches, and the people you find along the way.
           </p>
-        </div>
-
-        <div className="home-hero-actions">
-          <button type="button" className="create-trip-button" onClick={onPlanTrip}>
-            + Plan a new journey
-          </button>
-          <button type="button" className="secondary-button" onClick={onOpenConverter}>
-            Currency converter →
-          </button>
-        </div>
-      </header>
-
-      {trips.length > 0 ? (
-        <>
-          <div className="home-stats-grid">
-            <div className="home-stat-card">
-              <span className="stat-label">Planned Journeys</span>
-              <strong className="stat-value">{trips.length}</strong>
-              <span className="stat-detail">
-                {trips.length === 1 ? '1 active adventure' : `${trips.length} adventures recorded`}
-              </span>
-            </div>
-
-            <div className="home-stat-card">
-              <span className="stat-label">Total Travel Budget</span>
-              <strong className="stat-value">
-                {isSingleCurrency
-                  ? formatMoney(totalBudgetAcrossTrips, primaryCurrency)
-                  : `${trips.length} currencies`}
-              </strong>
-              <span className="stat-detail">
-                {isSingleCurrency
-                  ? `Across all planned trips`
-                  : `Multiple home currencies specified`}
-              </span>
-            </div>
-
-            <div className="home-stat-card">
-              <span className="stat-label">Next Destination</span>
-              <strong className="stat-value stat-truncate">{trips[0].destination}</strong>
-              <span className="stat-detail">{trips[0].name}</span>
-            </div>
+          <div className="home-hero-actions">
+            <button type="button" className="create-trip-button" onClick={onPlanTrip}>
+              Plan a journey <span aria-hidden="true">↗</span>
+            </button>
+            <button type="button" className="secondary-button" onClick={onOpenConverter}>
+              Convert currency
+            </button>
           </div>
+        </div>
+        <div className="home-hero-art" aria-hidden="true">
+          <div className="hero-art-sun" />
+          <div className="hero-art-ring hero-art-ring-one" />
+          <div className="hero-art-ring hero-art-ring-two" />
+          <div className="hero-art-land hero-art-land-back" />
+          <div className="hero-art-land hero-art-land-front" />
+          <div className="hero-art-path" />
+          <span className="hero-art-note">go where it feels like you</span>
+          <span className="hero-art-caption">THE WORLD, A LITTLE CLOSER</span>
+        </div>
+        <div className="home-hero-footnote">
+          <span>Made for the miles you share</span>
+          <span className="home-hero-footnote-mark" aria-hidden="true">✳</span>
+          <span>And the moments you keep</span>
+        </div>
+      </section>
 
-          <div className="home-section">
-            <div className="home-section-header">
-              <div>
-                <p className="eyebrow">Your Adventures</p>
-                <h3>Recent Journeys</h3>
+      <section className="home-section journeys-section" aria-labelledby="upcoming-title">
+        <div className="home-section-header">
+          <div>
+            <p className="eyebrow">Your little atlas</p>
+            <h2 id="upcoming-title">Journeys on the horizon</h2>
+          </div>
+          <button type="button" className="text-action-button" onClick={onPlanTrip}>
+            All trips <span aria-hidden="true">↗</span>
+          </button>
+        </div>
+
+        {upcomingTrips.length > 0 ? (
+          <div className="journey-grid">
+            {upcomingTrips.map((trip, index) => (
+              <JourneyCard
+                key={trip.id}
+                trip={trip}
+                index={index}
+                onOpen={() => onOpenTrip(trip.id)}
+              />
+            ))}
+            <button type="button" className="journey-add-card" onClick={onPlanTrip}>
+              <span className="journey-add-mark" aria-hidden="true">＋</span>
+              <span>There’s always room<br />for one more story.</span>
+              <span className="journey-add-link">Plan another journey ↗</span>
+            </button>
+          </div>
+        ) : (
+          <div className="home-empty-card">
+            <div className="empty-state-orbit" aria-hidden="true"><span>✳</span></div>
+            <div className="home-empty-content">
+              <p className="eyebrow">{previousTrips.length ? 'The next page is yours' : 'Your first page is waiting'}</p>
+              <h3>{previousTrips.length ? 'Ready for somewhere new?' : 'Where shall we go?'}</h3>
+              <p>
+                {previousTrips.length
+                  ? 'You know how lovely the going can be. Start with a place, a date, or simply a feeling.'
+                  : 'Start with a place, a date, or simply a feeling. Your plans, little details, and shared memories can live here.'}
+              </p>
+              <div className="home-empty-actions">
+                <button type="button" className="create-trip-button" onClick={onPlanTrip}>
+                  {previousTrips.length ? 'Plan another journey' : 'Plan your first journey'} <span aria-hidden="true">↗</span>
+                </button>
+                <button type="button" className="text-action-button" onClick={onOpenConverter}>Or start with a currency conversion</button>
               </div>
-              <button type="button" className="text-action-button" onClick={onPlanTrip}>
-                View all trips →
-              </button>
             </div>
+          </div>
+        )}
+      </section>
 
-            <div className="trip-grid">
-              {trips.map((trip) => (
-                <article className="trip-card home-trip-card" key={trip.id}>
-                  <p className="eyebrow">{trip.destination}</p>
-                  <h3>{trip.name}</h3>
-                  <p className="trip-budget">
-                    Budget: {formatMoney(trip.budget, trip.homeCurrency)}
-                  </p>
-                  <button
-                    type="button"
-                    className="workspace-open-button"
-                    onClick={() => onOpenTrip(trip.id)}
-                  >
-                    Open trip workspace →
-                  </button>
-                </article>
-              ))}
+      {previousTrips.length > 0 && (
+        <section className="home-section previous-section" aria-labelledby="previous-title">
+          <div className="home-section-header">
+            <div>
+              <p className="eyebrow">The good kind of looking back</p>
+              <h2 id="previous-title">Journeys you’ve taken</h2>
             </div>
           </div>
-        </>
-      ) : (
-        <div className="home-empty-card">
-          <div className="home-empty-content">
-            <p className="eyebrow">Ready for adventure?</p>
-            <h3>No journeys planned yet</h3>
-            <p>
-              Create your first trip to organize your day-by-day itinerary, track daily expenses, and keep your travel memories in one place.
-            </p>
-            <div className="home-empty-actions">
-              <button type="button" className="create-trip-button" onClick={onPlanTrip}>
-                + Plan your first trip
-              </button>
-              <button type="button" className="secondary-button" onClick={onOpenConverter}>
-                Try currency converter
-              </button>
-            </div>
+          <div className="journey-grid journey-grid-previous">
+            {previousTrips.map((trip, index) => (
+              <JourneyCard
+                key={trip.id}
+                trip={trip}
+                past
+                index={index}
+                onOpen={() => onOpenTrip(trip.id)}
+              />
+            ))}
           </div>
-        </div>
+        </section>
       )}
-    </section>
+
+      <footer className="home-footer-note">
+        <span className="home-footer-mark" aria-hidden="true">a</span>
+        <p>A place for the plans, the spending, and the stories that make a trip yours.</p>
+      </footer>
+    </main>
   )
 }

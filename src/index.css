@@ -1,17 +1,19 @@
 :root {
-  --bg-0: #071018;
-  --bg-1: #0d1c28;
-  --card: rgba(12, 28, 40, 0.82);
-  --stroke: rgba(154, 214, 196, 0.18);
-  --text: #d7e6df;
-  --muted: #8aa39a;
-  --heading: #f4fbf7;
-  --accent: #3ee0b0;
-  --accent-2: #7cf0c8;
-  --warn: #ff8a8a;
-  --shadow: 0 30px 80px rgba(0, 0, 0, 0.35);
+  color-scheme: light;
+  --bg-0: #f6f4ed;
+  --bg-1: #eeece2;
+  --card: #fffefa;
+  --stroke: rgba(38, 65, 49, 0.14);
+  --text: #38453a;
+  --muted: #7b8478;
+  --heading: #203b2c;
+  --accent: #3e664d;
+  --accent-2: #31583f;
+  --warn: #a44c3e;
+  --shadow: 0 18px 48px rgba(37, 55, 40, 0.09);
   --radius: 22px;
-  --sans: 'Segoe UI', system-ui, sans-serif;
+  --sans: 'Aptos', 'Segoe UI', system-ui, sans-serif;
+  --serif: 'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', Georgia, serif;
   --mono: ui-monospace, 'Cascadia Mono', Consolas, monospace;
 }
 
@@ -31,19 +33,7 @@ body {
   margin: 0;
   font-family: var(--sans);
   color: var(--text);
-  background:
-    radial-gradient(
-      1000px 650px at var(--glow-x, 10%) var(--glow-y, 0%),
-      rgba(19, 78, 74, 0.85) 0%,
-      transparent 60%
-    ),
-    radial-gradient(
-      900px 600px at 100% 10%,
-      rgba(30, 58, 95, 0.75) 0%,
-      transparent 55%
-    ),
-    linear-gradient(180deg, var(--bg-0), var(--bg-1));
-  background-attachment: fixed;
+  background: var(--bg-0);
   -webkit-font-smoothing: antialiased;
 }
 button,
@@ -54,4 +44,9 @@ input {
 
 a {
   color: var(--accent-2);
+}
+
+::selection {
+  color: #fffefa;
+  background: #52765b;
 }

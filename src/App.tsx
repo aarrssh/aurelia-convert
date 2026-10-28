@@ -5,10 +5,11 @@ import { HomeDashboard } from './components/HomeDashboard'
 import { TripsDashboard } from './components/TripsDashboard'
 import { TripWorkspace } from './components/TripWorkspace'
 import {
-  deleteStoredExpenses,
-  deleteStoredItinerary,
+  deleteStoredTrip,
   getStoredTrips,
+  restoreBackup,
   saveStoredTrips,
+  type BackupPreview,
 } from './services/storage'
 import type { Currency, ExchangeRate } from './types/currency'
 import type { Trip } from './types/trip'
@@ -36,37 +37,56 @@ export default function App() {
     setActiveTab('converter')
   }
 
-  function handleCreateTrip(newTrip: Trip) {
+  function handleCreateTrip(newTrip: Trip): boolean {
     const nextTrips = [newTrip, ...trips]
     const saveResult = saveStoredTrips(nextTrips)
     if (!saveResult.success) {
       setStorageError(saveResult.error ?? 'Could not save trip.')
-      return
+      return false
     }
     setTrips(nextTrips)
     setStorageError(null)
+    return true
   }
 
-  function handleUpdateTrip(updatedTrip: Trip) {
+  function handleUpdateTrip(updatedTrip: Trip): boolean {
     const nextTrips = trips.map((t) => (t.id === updatedTrip.id ? updatedTrip : t))
     const saveResult = saveStoredTrips(nextTrips)
     if (!saveResult.success) {
       setStorageError(saveResult.error ?? 'Could not update trip.')
-      return
+      return false
     }
     setTrips(nextTrips)
     setStorageError(null)
+    return true
   }
 
-  function handleDeleteTrip(tripId: string) {
+  function handleDeleteTrip(tripId: string): boolean {
     const nextTrips = trips.filter((t) => t.id !== tripId)
-    saveStoredTrips(nextTrips)
-    deleteStoredExpenses(tripId)
-    deleteStoredItinerary(tripId)
+    const result = deleteStoredTrip(tripId)
+    if (!result.success) {
+      setStorageError(result.error ?? 'Could not delete trip.')
+      return false
+    }
     setTrips(nextTrips)
+    setStorageError(result.warning ?? null)
     if (selectedTripId === tripId) {
       setSelectedTripId(null)
     }
+    return true
+  }
+
+  function handleRestoreBackup(preview: BackupPreview) {
+    const result = restoreBackup(preview)
+    if (!result.success) {
+      setStorageError(result.error ?? 'Could not restore backup.')
+      return result
+    }
+    setTrips(preview.backup.trips)
+    setSelectedTripId(null)
+    setActiveTab('trips')
+    setStorageError(result.warning ?? null)
+    return result
   }
 
   const selectedTrip = trips.find((t) => t.id === selectedTripId)
@@ -160,6 +180,18 @@ export default function App() {
       <nav className="app-navigation" aria-label="Main navigation">
         <button
           type="button"
+          className="nav-brand"
+          onClick={() => {
+            setActiveTab('home')
+            setSelectedTripId(null)
+          }}
+          aria-label="Aurelia home"
+        >
+          <span className="nav-brand-mark" aria-hidden="true">a</span>
+          <span>Aurelia</span>
+        </button>
+        <button
+          type="button"
           className={activeTab === 'home' ? 'nav-tab active' : 'nav-tab'}
           onClick={() => {
             setActiveTab('home')
@@ -206,6 +238,7 @@ export default function App() {
             onBack={() => setSelectedTripId(null)}
             onUpdateTrip={handleUpdateTrip}
             onDeleteTrip={handleDeleteTrip}
+            storageError={storageError}
           />
         ) : (
           <TripsDashboard
@@ -214,6 +247,7 @@ export default function App() {
             onCreateTrip={handleCreateTrip}
             onDeleteTrip={handleDeleteTrip}
             storageError={storageError}
+            onRestoreBackup={handleRestoreBackup}
           />
         ))}
 

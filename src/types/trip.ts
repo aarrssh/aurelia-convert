@@ -47,3 +47,12 @@ export type ItineraryActivity = {
   completed?: boolean
   createdAt: string
 }
+
+export type JournalEntry = {
+  id: string
+  tripId: string
+  title: string
+  date: string
+  content: string
+  createdAt: string
+}

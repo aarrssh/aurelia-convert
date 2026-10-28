@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { downloadBackupFile } from '../services/storage'
+import { downloadBackupFile, parseBackup, type BackupPreview, type StorageOperationResult } from '../services/storage'
 import type { Trip } from '../types/trip'
 import { formatMoney } from '../utils/formatters'
 import { QuickExpenses } from './QuickExpenses'
@@ -7,9 +7,10 @@ import { QuickExpenses } from './QuickExpenses'
 type TripsDashboardProps = {
   trips: Trip[]
   onOpenTrip: (tripId: string) => void
-  onCreateTrip: (newTrip: Trip) => void
-  onDeleteTrip: (tripId: string) => void
+  onCreateTrip: (newTrip: Trip) => boolean
+  onDeleteTrip: (tripId: string) => boolean
   storageError: string | null
+  onRestoreBackup: (preview: BackupPreview) => StorageOperationResult
 }
 
 export function TripsDashboard({
@@ -18,6 +19,7 @@ export function TripsDashboard({
   onCreateTrip,
   onDeleteTrip,
   storageError,
+  onRestoreBackup,
 }: TripsDashboardProps) {
   const [name, setName] = useState('')
   const [destination, setDestination] = useState('')
@@ -25,6 +27,9 @@ export function TripsDashboard({
   const [budget, setBudget] = useState('')
   const [expandedExpensesTripId, setExpandedExpensesTripId] = useState<string | null>(null)
   const [exportError, setExportError] = useState<string | null>(null)
+  const [importError, setImportError] = useState<string | null>(null)
+  const [importStatus, setImportStatus] = useState<string | null>(null)
+  const [backupPreview, setBackupPreview] = useState<BackupPreview | null>(null)
 
   function saveTrip(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -49,7 +54,7 @@ export function TripsDashboard({
       createdAt: new Date().toISOString(),
     }
 
-    onCreateTrip(newTrip)
+    if (!onCreateTrip(newTrip)) return
     setName('')
     setDestination('')
     setBudget('')
@@ -62,6 +67,36 @@ export function TripsDashboard({
     } else {
       setExportError(null)
     }
+  }
+
+  async function handleBackupFile(file?: File) {
+    setBackupPreview(null)
+    setImportError(null)
+    setImportStatus(null)
+    if (!file) return
+    try {
+      const parsed: unknown = JSON.parse(await file.text())
+      setBackupPreview(parseBackup(parsed))
+    } catch (cause) {
+      setImportError(cause instanceof Error ? cause.message : 'Could not read this backup file.')
+    }
+  }
+
+  function handleRestore() {
+    if (!backupPreview) return
+    const confirmed = window.confirm(
+      `Replace current Aurelia data with this backup? It contains ${backupPreview.tripCount} trips, ${backupPreview.expenseCount} expenses, ${backupPreview.itineraryCount} itinerary activities, and ${backupPreview.journalCount} journal entries.${backupPreview.backup.journals === undefined ? ' Existing journal entries will be kept because this backup predates Journal.' : ''}`,
+    )
+    if (!confirmed) return
+    const result = onRestoreBackup(backupPreview)
+    if (!result.success) {
+      setImportError(result.error ?? 'Restore failed.')
+      setImportStatus(null)
+      return
+    }
+    setImportError(null)
+    setImportStatus(result.warning ?? 'Backup restored successfully.')
+    setBackupPreview(null)
   }
 
   function toggleExpensesInline(tripId: string) {
@@ -79,6 +114,11 @@ export function TripsDashboard({
       {(storageError || exportError) && (
         <div className="banner error" role="alert">
           <p>{storageError || exportError}</p>
+        </div>
+      )}
+      {(importError || importStatus) && (
+        <div className={importError ? 'banner error' : 'banner'} role={importError ? 'alert' : 'status'}>
+          <p>{importError ?? importStatus}</p>
         </div>
       )}
 
@@ -151,7 +191,29 @@ export function TripsDashboard({
               Export backup (JSON)
             </button>
           )}
+          <label className="export-backup-button">
+            Import backup
+            <input
+              type="file"
+              accept="application/json,.json"
+              onChange={(event) => void handleBackupFile(event.currentTarget.files?.[0])}
+            />
+          </label>
         </div>
+
+        {backupPreview && (
+          <section className="backup-preview" aria-live="polite">
+            <p>
+              Backup preview: {backupPreview.tripCount} trips, {backupPreview.expenseCount} expenses, {backupPreview.itineraryCount} itinerary activities, and {backupPreview.journalCount} journal entries.
+            </p>
+            <p>
+              Restoring replaces current trip, expense, and itinerary data.
+              {backupPreview.backup.journals === undefined && ' Existing journal entries are kept because this backup predates Journal.'}
+            </p>
+            <button type="button" className="danger-button" onClick={handleRestore}>Restore and replace data</button>
+            <button type="button" className="secondary-button" onClick={() => setBackupPreview(null)}>Cancel</button>
+          </section>
+        )}
 
         {trips.length === 0 ? (
           <p className="empty-trips">
@@ -169,7 +231,11 @@ export function TripsDashboard({
                     className="delete-trip-button"
                     aria-label={`Delete ${trip.name}`}
                     title="Delete trip"
-                    onClick={() => onDeleteTrip(trip.id)}
+                    onClick={() => {
+                      if (window.confirm(`Delete “${trip.name}” and its expenses and itinerary?`)) {
+                        onDeleteTrip(trip.id)
+                      }
+                    }}
                   >
                     ×
                   </button>

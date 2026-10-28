@@ -64,8 +64,13 @@ export function QuickExpenses({ trip }: { trip: Trip }) {
 
   function removeExpense(id: string) {
     const updated = expenses.filter((expense) => expense.id !== id)
-    saveStoredExpenses(trip.id, updated)
+    const result = saveStoredExpenses(trip.id, updated)
+    if (!result.success) {
+      setError(result.error ?? 'Could not remove this expense.')
+      return
+    }
     setExpenses(updated)
+    setError(null)
   }
 
   return (
