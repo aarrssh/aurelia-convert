@@ -1,9 +1,19 @@
-import type { Expense, Trip } from '../types/trip'
+import type { Expense, ExpenseCategory, ItineraryActivity, Trip } from '../types/trip'
 
 export const STORAGE_KEYS = {
   TRIPS: 'aurelia-trips',
   expenses: (tripId: string) => `aurelia-expenses-${tripId}`,
+  itinerary: (tripId: string) => `aurelia-itinerary-${tripId}`,
 } as const
+
+const VALID_CATEGORIES: ExpenseCategory[] = [
+  'food',
+  'transport',
+  'accommodation',
+  'activities',
+  'shopping',
+  'general',
+]
 
 export type StorageResult<T> = {
   data: T
@@ -17,6 +27,7 @@ export type AureliaBackup = {
   app: 'Aurelia Convert'
   trips: Trip[]
   expenses: Record<string, Expense[]>
+  itineraries?: Record<string, ItineraryActivity[]>
 }
 
 function isLocalStorageAvailable(): boolean {
@@ -46,6 +57,8 @@ function sanitizeTrip(item: unknown): Trip | null {
     destination: t.destination,
     homeCurrency: typeof t.homeCurrency === 'string' ? t.homeCurrency : 'INR',
     budget,
+    startDate: typeof t.startDate === 'string' && t.startDate ? t.startDate : undefined,
+    endDate: typeof t.endDate === 'string' && t.endDate ? t.endDate : undefined,
     createdAt: typeof t.createdAt === 'string' ? t.createdAt : new Date().toISOString(),
   }
 }
@@ -62,6 +75,15 @@ function sanitizeExpense(item: unknown): Expense | null {
 
   const homeAmount = Number(e.homeAmount)
   const rate = Number(e.rate)
+  const createdAt = typeof e.createdAt === 'string' ? e.createdAt : new Date().toISOString()
+  const rateDate = typeof e.rateDate === 'string' ? e.rateDate : createdAt.slice(0, 10)
+
+  const rawCat = typeof e.category === 'string' ? e.category.toLowerCase() : 'general'
+  const category: ExpenseCategory = VALID_CATEGORIES.includes(rawCat as ExpenseCategory)
+    ? (rawCat as ExpenseCategory)
+    : 'general'
+
+  const date = typeof e.date === 'string' && e.date.trim() ? e.date.trim() : rateDate
 
   return {
     id: e.id,
@@ -72,8 +94,13 @@ function sanitizeExpense(item: unknown): Expense | null {
     homeCurrency: typeof e.homeCurrency === 'string' ? e.homeCurrency : 'INR',
     homeAmount: Number.isFinite(homeAmount) ? homeAmount : amount,
     rate: Number.isFinite(rate) ? rate : 1,
-    rateDate: typeof e.rateDate === 'string' ? e.rateDate : new Date().toISOString().slice(0, 10),
-    createdAt: typeof e.createdAt === 'string' ? e.createdAt : new Date().toISOString(),
+    rateDate,
+    category,
+    date,
+    notes: typeof e.notes === 'string' && e.notes.trim() ? e.notes.trim() : undefined,
+    activityId:
+      typeof e.activityId === 'string' && e.activityId.trim() ? e.activityId.trim() : undefined,
+    createdAt,
   }
 }
 
@@ -257,13 +284,143 @@ export function deleteStoredExpenses(tripId: string): { success: boolean; error:
   }
 }
 
+function sanitizeItineraryActivity(item: unknown): ItineraryActivity | null {
+  if (!item || typeof item !== 'object') return null
+  const a = item as Record<string, unknown>
+  if (typeof a.id !== 'string' || !a.id) return null
+  if (typeof a.tripId !== 'string' || !a.tripId) return null
+  if (typeof a.date !== 'string' || !a.date) return null
+  if (typeof a.title !== 'string' || !a.title) return null
+
+  return {
+    id: a.id,
+    tripId: a.tripId,
+    date: a.date,
+    title: a.title,
+    startTime: typeof a.startTime === 'string' && a.startTime ? a.startTime : undefined,
+    endTime: typeof a.endTime === 'string' && a.endTime ? a.endTime : undefined,
+    locationName: typeof a.locationName === 'string' && a.locationName ? a.locationName : undefined,
+    locationAddress:
+      typeof a.locationAddress === 'string' && a.locationAddress ? a.locationAddress : undefined,
+    notes: typeof a.notes === 'string' && a.notes ? a.notes : undefined,
+    completed: Boolean(a.completed),
+    createdAt: typeof a.createdAt === 'string' ? a.createdAt : new Date().toISOString(),
+  }
+}
+
+export function getStoredItinerary(tripId: string): StorageResult<ItineraryActivity[]> {
+  if (!isLocalStorageAvailable()) {
+    return {
+      data: [],
+      error: 'Local storage is disabled or unavailable.',
+      isCorrupted: false,
+    }
+  }
+
+  const key = STORAGE_KEYS.itinerary(tripId)
+  const raw = window.localStorage.getItem(key)
+  if (raw === null) {
+    return { data: [], error: null, isCorrupted: false }
+  }
+
+  try {
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) {
+      return {
+        data: [],
+        error: `Existing itinerary data for trip ${tripId} is malformed.`,
+        isCorrupted: true,
+      }
+    }
+
+    const activities: ItineraryActivity[] = []
+    let hadInvalidItems = false
+    for (const item of parsed) {
+      const act = sanitizeItineraryActivity(item)
+      if (act) {
+        activities.push(act)
+      } else {
+        hadInvalidItems = true
+      }
+    }
+
+    if (hadInvalidItems && activities.length === 0 && parsed.length > 0) {
+      return {
+        data: [],
+        error: 'Saved itinerary could not be read due to unrecognized data format.',
+        isCorrupted: true,
+      }
+    }
+
+    return { data: activities, error: null, isCorrupted: false }
+  } catch {
+    return {
+      data: [],
+      error: 'Saved itinerary data is corrupted and could not be parsed.',
+      isCorrupted: true,
+    }
+  }
+}
+
+export function saveStoredItinerary(
+  tripId: string,
+  activities: ItineraryActivity[],
+): { success: boolean; error: string | null } {
+  if (!isLocalStorageAvailable()) {
+    return { success: false, error: 'Local storage is disabled or unavailable.' }
+  }
+
+  const key = STORAGE_KEYS.itinerary(tripId)
+  try {
+    const raw = window.localStorage.getItem(key)
+    if (raw !== null) {
+      try {
+        const parsed = JSON.parse(raw)
+        if (!Array.isArray(parsed)) {
+          window.localStorage.setItem(`${key}-corrupted-${Date.now()}`, raw)
+          console.warn(`Preserved corrupted itinerary for trip ${tripId} before saving.`)
+        }
+      } catch {
+        window.localStorage.setItem(`${key}-corrupted-${Date.now()}`, raw)
+        console.warn(`Preserved unparseable itinerary for trip ${tripId} before saving.`)
+      }
+    }
+    window.localStorage.setItem(key, JSON.stringify(activities))
+    return { success: true, error: null }
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : 'Could not write itinerary to localStorage'
+    return { success: false, error: message }
+  }
+}
+
+export function deleteStoredItinerary(tripId: string): { success: boolean; error: string | null } {
+  if (!isLocalStorageAvailable()) {
+    return { success: false, error: 'Local storage is disabled or unavailable.' }
+  }
+
+  const key = STORAGE_KEYS.itinerary(tripId)
+  try {
+    window.localStorage.removeItem(key)
+    return { success: true, error: null }
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : 'Could not remove itinerary from localStorage'
+    return { success: false, error: message }
+  }
+}
+
 export function createExportBackup(): AureliaBackup {
   const tripsResult = getStoredTrips()
   const expensesMap: Record<string, Expense[]> = {}
+  const itinerariesMap: Record<string, ItineraryActivity[]> = {}
 
   for (const trip of tripsResult.data) {
     const expResult = getStoredExpenses(trip.id)
     expensesMap[trip.id] = expResult.data
+
+    const itinResult = getStoredItinerary(trip.id)
+    itinerariesMap[trip.id] = itinResult.data
   }
 
   return {
@@ -272,6 +429,7 @@ export function createExportBackup(): AureliaBackup {
     app: 'Aurelia Convert',
     trips: tripsResult.data,
     expenses: expensesMap,
+    itineraries: itinerariesMap,
   }
 }
 

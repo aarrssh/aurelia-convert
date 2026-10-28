@@ -1,350 +1,77 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { fetchCurrencies, fetchRate } from './api/frankfurter'
 import { CurrencySelect } from './components/CurrencySelect'
+import { HomeDashboard } from './components/HomeDashboard'
+import { TripsDashboard } from './components/TripsDashboard'
+import { TripWorkspace } from './components/TripWorkspace'
 import {
   deleteStoredExpenses,
-  downloadBackupFile,
-  getStoredExpenses,
+  deleteStoredItinerary,
   getStoredTrips,
-  saveStoredExpenses,
   saveStoredTrips,
 } from './services/storage'
 import type { Currency, ExchangeRate } from './types/currency'
-import type { Expense, Trip } from './types/trip'
+import type { Trip } from './types/trip'
 import { formatMoney, formatRate, parseAmount } from './utils/formatters'
 import './App.css'
-function QuickExpenses({ trip }: { trip: Trip }) {
-  const [expenses, setExpenses] = useState<Expense[]>(() => {
-    return getStoredExpenses(trip.id).data
-  })
 
-  const [description, setDescription] = useState('')
-  const [amount, setAmount] = useState('')
-  const [currency, setCurrency] = useState('JPY')
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+export default function App() {
+  const [activeTab, setActiveTab] = useState<'home' | 'trips' | 'converter'>('home')
+  const [selectedTripId, setSelectedTripId] = useState<string | null>(null)
+  const [trips, setTrips] = useState<Trip[]>(() => getStoredTrips().data)
+  const [storageError, setStorageError] = useState<string | null>(() => getStoredTrips().error)
 
-  const totalHome = expenses.reduce((sum, expense) => sum + expense.homeAmount, 0)
-
-  async function addExpense(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-
-    const parsedAmount = Number(amount)
-    if (!description.trim() || !amount.trim() || !Number.isFinite(parsedAmount) || parsedAmount <= 0) {
-      setError('Enter a description and an amount greater than zero.')
-      return
-    }
-
-    setSaving(true)
-    setError(null)
-
-    try {
-      const quote = await fetchRate(currency, trip.homeCurrency)
-      const expense: Expense = {
-        id: crypto.randomUUID(),
-        tripId: trip.id,
-        description: description.trim(),
-        amount: parsedAmount,
-        currency,
-        homeCurrency: trip.homeCurrency,
-        homeAmount: parsedAmount * quote.rate,
-        rate: quote.rate,
-        rateDate: quote.date,
-        createdAt: new Date().toISOString(),
-      }
-
-      const updated = [expense, ...expenses]
-      const saveResult = saveStoredExpenses(trip.id, updated)
-      if (!saveResult.success) {
-        setError(saveResult.error ?? 'Could not save this expense.')
-        return
-      }
-      setExpenses(updated)
-      setDescription('')
-      setAmount('')
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Could not convert this expense.')
-    } finally {
-      setSaving(false)
-    }
+  function handleOpenTrip(tripId: string) {
+    setSelectedTripId(tripId)
+    setActiveTab('trips')
   }
 
-  function removeExpense(id: string) {
-    const updated = expenses.filter((expense) => expense.id !== id)
-    saveStoredExpenses(trip.id, updated)
-    setExpenses(updated)
+  function handlePlanTrip() {
+    setSelectedTripId(null)
+    setActiveTab('trips')
   }
 
-  return (
-    <section className="quick-expenses">
-      <h4>Quick expenses</h4>
+  function handleOpenConverter() {
+    setSelectedTripId(null)
+    setActiveTab('converter')
+  }
 
-      <form className="expense-form" onSubmit={addExpense}>
-        <label>
-          Description
-          <input
-            value={description}
-            onChange={(event) => setDescription(event.target.value)}
-            placeholder="Ramen lunch"
-            required
-          />
-        </label>
-
-        <div className="expense-input-row">
-          <label>
-            Amount
-            <input
-              type="number"
-              min="0.01"
-              step="any"
-              value={amount}
-              onChange={(event) => setAmount(event.target.value)}
-              placeholder="1200"
-              required
-            />
-          </label>
-
-          <label>
-            Currency
-            <select value={currency} onChange={(event) => setCurrency(event.target.value)}>
-              <option value="JPY">JPY — Yen</option>
-              <option value="THB">THB — Baht</option>
-              <option value="USD">USD — Dollar</option>
-              <option value="EUR">EUR — Euro</option>
-              <option value="GBP">GBP — Pound</option>
-              <option value="INR">INR — Rupee</option>
-            </select>
-          </label>
-        </div>
-
-        <button className="create-trip-button" type="submit" disabled={saving}>
-          {saving ? 'Converting…' : 'Add expense'}
-        </button>
-      </form>
-
-      {error && <p className="field-error" role="alert">{error}</p>}
-
-      <div className="expense-total">
-        <span>Total in {trip.homeCurrency}</span>
-        <strong>{formatMoney(totalHome, trip.homeCurrency)}</strong>
-      </div>
-
-      {expenses.length === 0 ? (
-        <p className="empty-trips">No expenses yet. Add your first one above.</p>
-      ) : (
-        <div className="expense-list">
-          {expenses.map((expense) => (
-            <article className="expense-row" key={expense.id}>
-              <div className="expense-description">
-                <strong>{expense.description}</strong>
-                <span>
-                  {expense.currency} {expense.amount.toLocaleString()} · Rate date {expense.rateDate}
-                </span>
-              </div>
-
-              <div className="expense-comparison">
-                <strong>{formatMoney(expense.amount, expense.currency)}</strong>
-                <span>{formatMoney(expense.homeAmount, expense.homeCurrency)}</span>
-                <small>1 {expense.currency} = {formatRate(expense.rate)} {expense.homeCurrency}</small>
-              </div>
-
-              <button
-                type="button"
-                className="expense-remove"
-                onClick={() => removeExpense(expense.id)}
-                aria-label={`Remove ${expense.description}`}
-              >
-                Remove
-              </button>
-              
-            </article>
-          ))}
-        </div>
-      )}
-    </section>
-  )
-}
-
-function TripsDashboard() {
-  const [initialResult] = useState(() => getStoredTrips())
-  const [storageError, setStorageError] = useState<string | null>(initialResult.error)
-  const [trips, setTrips] = useState<Trip[]>(initialResult.data)
-
-  const [name, setName] = useState('')
-  const [destination, setDestination] = useState('')
-  const [homeCurrency, setHomeCurrency] = useState('INR')
-  const [budget, setBudget] = useState('')
-
-  function saveTrip(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-
-    const parsedBudget = Number(budget)
-    if (!name.trim() || !destination.trim() || !budget || !Number.isFinite(parsedBudget) || parsedBudget < 0) {
-      return
-    }
-
-    const newTrip: Trip = {
-      id: crypto.randomUUID(),
-      name: name.trim(),
-      destination: destination.trim(),
-      homeCurrency,
-      budget: parsedBudget,
-      createdAt: new Date().toISOString(),
-    }
-
-    const updatedTrips = [newTrip, ...trips]
-    const saveResult = saveStoredTrips(updatedTrips)
+  function handleCreateTrip(newTrip: Trip) {
+    const nextTrips = [newTrip, ...trips]
+    const saveResult = saveStoredTrips(nextTrips)
     if (!saveResult.success) {
       setStorageError(saveResult.error ?? 'Could not save trip.')
       return
     }
-
-    setTrips(updatedTrips)
+    setTrips(nextTrips)
     setStorageError(null)
-
-    setName('')
-    setDestination('')
-    setBudget('')
   }
-  function deleteTrip(tripId: string) {
-    const updatedTrips = trips.filter((trip) => trip.id !== tripId)
-  
-    saveStoredTrips(updatedTrips)
+
+  function handleUpdateTrip(updatedTrip: Trip) {
+    const nextTrips = trips.map((t) => (t.id === updatedTrip.id ? updatedTrip : t))
+    const saveResult = saveStoredTrips(nextTrips)
+    if (!saveResult.success) {
+      setStorageError(saveResult.error ?? 'Could not update trip.')
+      return
+    }
+    setTrips(nextTrips)
+    setStorageError(null)
+  }
+
+  function handleDeleteTrip(tripId: string) {
+    const nextTrips = trips.filter((t) => t.id !== tripId)
+    saveStoredTrips(nextTrips)
     deleteStoredExpenses(tripId)
-    setTrips(updatedTrips)
-  }
-
-  function handleExportBackup() {
-    const ok = downloadBackupFile()
-    if (!ok) {
-      setStorageError('Could not export backup file.')
+    deleteStoredItinerary(tripId)
+    setTrips(nextTrips)
+    if (selectedTripId === tripId) {
+      setSelectedTripId(null)
     }
   }
 
-  return (
-    <section className="trips-dashboard">
-      <div className="trips-heading">
-        <p className="eyebrow">Your adventures</p>
-        <h2>Trips</h2>
-        <p>Keep your travel memories and spending in one place.</p>
-      </div>
+  const selectedTrip = trips.find((t) => t.id === selectedTripId)
 
-      {storageError && (
-        <div className="banner error" role="alert">
-          <p>{storageError}</p>
-        </div>
-      )}
-
-      <form className="trip-form" onSubmit={saveTrip}>
-        <h3>Create a trip</h3>
-
-        <label>
-          Trip name
-          <input
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            placeholder="Summer in Japan"
-            required
-          />
-        </label>
-
-        <label>
-          Destination
-          <input
-            value={destination}
-            onChange={(event) => setDestination(event.target.value)}
-            placeholder="Tokyo, Japan"
-            required
-          />
-        </label>
-
-        <div className="trip-form-row">
-          <label>
-            Home currency
-            <select
-              value={homeCurrency}
-              onChange={(event) => setHomeCurrency(event.target.value)}
-            >
-              <option value="INR">INR — Indian Rupee</option>
-              <option value="USD">USD — US Dollar</option>
-              <option value="GBP">GBP — British Pound</option>
-              <option value="EUR">EUR — Euro</option>
-            </select>
-          </label>
-
-          <label>
-            Budget
-            <input
-              type="number"
-              min="0"
-              step="any"
-              value={budget}
-              onChange={(event) => setBudget(event.target.value)}
-              placeholder="50000"
-              required
-            />
-          </label>
-        </div>
-
-        <button className="create-trip-button" type="submit">
-          + Create trip
-        </button>
-      </form>
-
-      <div className="trip-list">
-        <div className="trip-list-header">
-          <h3>Your trips ({trips.length})</h3>
-          {trips.length > 0 && (
-            <button
-              type="button"
-              className="export-backup-button"
-              onClick={handleExportBackup}
-              title="Download a JSON backup of your trips and expenses"
-            >
-              Export backup (JSON)
-            </button>
-          )}
-        </div>
-
-        {trips.length === 0 ? (
-          <p className="empty-trips">
-            No trips yet. Create your first trip above!
-          </p>
-        ) : (
-          <div className="trip-grid">
-            {trips.map((trip) => (
-              <article className="trip-card" key={trip.id}>
-                 <button
-                  type="button"
-                  className="delete-trip-button"
-                  aria-label={`Delete ${trip.name}`}
-                  title="Delete trip"
-                  onClick={() => deleteTrip(trip.id)}
-                >
-                  ×
-                </button>
-
-                <p className="eyebrow">{trip.destination}</p>
-                <h3>{trip.name}</h3>
-                <p className="trip-budget">
-                  Budget: {new Intl.NumberFormat(undefined, {
-                    style: 'currency',
-                    currency: trip.homeCurrency,
-                    maximumFractionDigits: 2,
-                  }).format(trip.budget)}
-                </p>
-                <QuickExpenses trip={trip} />
-              </article>
-            ))}
-          </div>
-        )}
-      </div>
-    </section>
-  )
-}
-
-export default function App() {
-  const [activeTab, setActiveTab] = useState<'converter' | 'trips'>('converter')
+  // Currency Converter state & logic (preserved 100%)
   const [currencies, setCurrencies] = useState<Currency[]>([])
   const [amount, setAmount] = useState('100')
   const [from, setFrom] = useState('USD')
@@ -433,154 +160,195 @@ export default function App() {
       <nav className="app-navigation" aria-label="Main navigation">
         <button
           type="button"
-          className={activeTab === 'converter' ? 'nav-tab active' : 'nav-tab'}
-          onClick={() => setActiveTab('converter')}
+          className={activeTab === 'home' ? 'nav-tab active' : 'nav-tab'}
+          onClick={() => {
+            setActiveTab('home')
+            setSelectedTripId(null)
+          }}
         >
-          Converter
+          Home
         </button>
         <button
           type="button"
           className={activeTab === 'trips' ? 'nav-tab active' : 'nav-tab'}
-          onClick={() => setActiveTab('trips')}
+          onClick={() => {
+            setActiveTab('trips')
+            setSelectedTripId(null)
+          }}
         >
-          Trips
+          My Trips
+        </button>
+        <button
+          type="button"
+          className={activeTab === 'converter' ? 'nav-tab active' : 'nav-tab'}
+          onClick={() => {
+            setActiveTab('converter')
+            setSelectedTripId(null)
+          }}
+        >
+          Converter
         </button>
       </nav>
-  
+
+      {activeTab === 'home' && (
+        <HomeDashboard
+          trips={trips}
+          onOpenTrip={handleOpenTrip}
+          onPlanTrip={handlePlanTrip}
+          onOpenConverter={handleOpenConverter}
+        />
+      )}
+
+      {activeTab === 'trips' &&
+        (selectedTrip ? (
+          <TripWorkspace
+            trip={selectedTrip}
+            onBack={() => setSelectedTripId(null)}
+            onUpdateTrip={handleUpdateTrip}
+            onDeleteTrip={handleDeleteTrip}
+          />
+        ) : (
+          <TripsDashboard
+            trips={trips}
+            onOpenTrip={handleOpenTrip}
+            onCreateTrip={handleCreateTrip}
+            onDeleteTrip={handleDeleteTrip}
+            storageError={storageError}
+          />
+        ))}
 
       {activeTab === 'converter' && (
-      <>
-        <header className="brand">
-          <span className="brand-mark" aria-hidden="true">
-            FX
-          </span>
-          <div>
-            <p className="eyebrow">Currency Converter</p>
-            <h1>Currency Converter</h1>
-          </div>
-        </header>
-
-      <main className="converter-card">
-        <div className="card-heading">
-          <h2>Live currency converter</h2>
-          <p>Mid-market rates from Frankfurter, refreshed as you type.</p>
-        </div>
-
-        <label className="amount-field">
-          <span className="field-label">Amount</span>
-          <div className="amount-input-wrap">
-            <span className="amount-prefix">{fromMeta?.symbol ?? from}</span>
-            <input
-              className="amount-input"
-              inputMode="decimal"
-              autoComplete="off"
-              placeholder="0.00"
-              value={amount}
-              onChange={(event) => setAmount(event.target.value)}
-              aria-invalid={Boolean(amountError)}
-              aria-describedby={amountError ? 'amount-error' : undefined}
-            />
-          </div>
-          {amountError && (
-            <span id="amount-error" className="field-error">
-              {amountError}
+        <>
+          <header className="brand">
+            <span className="brand-mark" aria-hidden="true">
+              FX
             </span>
-          )}
-        </label>
+            <div>
+              <p className="eyebrow">Currency Converter</p>
+              <h1>Currency Converter</h1>
+            </div>
+          </header>
 
-        <div className="pair-row">
-          <CurrencySelect
-            label="From"
-            currencies={currencies}
-            value={from}
-            onChange={setFrom}
-            disabled={loadingCurrencies}
-          />
+          <main className="converter-card">
+            <div className="card-heading">
+              <h2>Live currency converter</h2>
+              <p>Mid-market rates from Frankfurter, refreshed as you type.</p>
+            </div>
 
-          <button
-            type="button"
-            className="swap-button"
-            onClick={swapCurrencies}
-            aria-label="Swap currencies"
-            disabled={loadingCurrencies}
-          >
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path
-                d="M7 7h11l-3-3M17 17H6l3 3"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-                strokeLinejoin="round"
+            <label className="amount-field">
+              <span className="field-label">Amount</span>
+              <div className="amount-input-wrap">
+                <span className="amount-prefix">{fromMeta?.symbol ?? from}</span>
+                <input
+                  className="amount-input"
+                  inputMode="decimal"
+                  autoComplete="off"
+                  placeholder="0.00"
+                  value={amount}
+                  onChange={(event) => setAmount(event.target.value)}
+                  aria-invalid={Boolean(amountError)}
+                  aria-describedby={amountError ? 'amount-error' : undefined}
+                />
+              </div>
+              {amountError && (
+                <span id="amount-error" className="field-error">
+                  {amountError}
+                </span>
+              )}
+            </label>
+
+            <div className="pair-row">
+              <CurrencySelect
+                label="From"
+                currencies={currencies}
+                value={from}
+                onChange={setFrom}
+                disabled={loadingCurrencies}
               />
-            </svg>
-          </button>
 
-          <CurrencySelect
-            label="To"
-            currencies={currencies}
-            value={to}
-            onChange={setTo}
-            disabled={loadingCurrencies}
-          />
-        </div>
+              <button
+                type="button"
+                className="swap-button"
+                onClick={swapCurrencies}
+                aria-label="Swap currencies"
+                disabled={loadingCurrencies}
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    d="M7 7h11l-3-3M17 17H6l3 3"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </button>
 
-        {error && (
-          <div className="banner error" role="alert">
-            <p>{error}</p>
-            <button
-              type="button"
-              onClick={() => {
-                void loadCurrencies()
-                setRefreshKey((key) => key + 1)
-              }}
-            >
-              Retry
-            </button>
-          </div>
-        )}
+              <CurrencySelect
+                label="To"
+                currencies={currencies}
+                value={to}
+                onChange={setTo}
+                disabled={loadingCurrencies}
+              />
+            </div>
 
-        <section className="result" aria-live="polite">
-          {busy && converted === null && (
-            <p className="result-status">Fetching the latest rate…</p>
-          )}
-          {!busy && !error && parseAmount(amount) === null && (
-            <p className="result-status">Enter an amount to convert.</p>
-          )}
-          {converted !== null && quoteMatches && quote && (
-            <>
-              <p className="result-label">
-                {formatMoney(parseAmount(amount) ?? 0, from)} equals
-              </p>
-              <p className="result-value">
-                {loadingRate ? 'Updating…' : formatMoney(converted, to)}
-              </p>
-              <p className="result-meta">
-                1 {from} = {formatRate(quote.rate)} {to}
-                {toMeta ? ` (${toMeta.name})` : ''}
-              </p>
-            </>
-          )}
-        </section>
+            {error && (
+              <div className="banner error" role="alert">
+                <p>{error}</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void loadCurrencies()
+                    setRefreshKey((key) => key + 1)
+                  }}
+                >
+                  Retry
+                </button>
+              </div>
+            )}
 
-        <footer className="rate-bar">
-          <div>
-            <span>Rate date</span>
-            <strong>{quoteMatches && quote ? quote.date : '—'}</strong>
-          </div>
-          <div>
-            <span>Source</span>
-            <strong>
-              <a href="https://www.frankfurter.app/" target="_blank" rel="noreferrer">
-                Frankfurter API
-              </a>
-            </strong>
-          </div>
-        </footer>
-        </main>
-      </>
+            <section className="result" aria-live="polite">
+              {busy && converted === null && (
+                <p className="result-status">Fetching the latest rate…</p>
+              )}
+              {!busy && !error && parseAmount(amount) === null && (
+                <p className="result-status">Enter an amount to convert.</p>
+              )}
+              {converted !== null && quoteMatches && quote && (
+                <>
+                  <p className="result-label">
+                    {formatMoney(parseAmount(amount) ?? 0, from)} equals
+                  </p>
+                  <p className="result-value">
+                    {loadingRate ? 'Updating…' : formatMoney(converted, to)}
+                  </p>
+                  <p className="result-meta">
+                    1 {from} = {formatRate(quote.rate)} {to}
+                    {toMeta ? ` (${toMeta.name})` : ''}
+                  </p>
+                </>
+              )}
+            </section>
+
+            <footer className="rate-bar">
+              <div>
+                <span>Rate date</span>
+                <strong>{quoteMatches && quote ? quote.date : '—'}</strong>
+              </div>
+              <div>
+                <span>Source</span>
+                <strong>
+                  <a href="https://www.frankfurter.app/" target="_blank" rel="noreferrer">
+                    Frankfurter API
+                  </a>
+                </strong>
+              </div>
+            </footer>
+          </main>
+        </>
       )}
-      {activeTab === 'trips' && <TripsDashboard />}
     </div>
   )
 }
