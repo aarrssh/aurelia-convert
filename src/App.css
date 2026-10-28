@@ -409,7 +409,7 @@
 }
 
 .trip-form h3,
-.trip-list > h3 {
+.trip-list h3 {
   margin: 0;
   color: var(--heading);
 }
@@ -457,6 +457,36 @@
 .trip-list {
   display: grid;
   gap: 16px;
+}
+
+.trip-list-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.export-backup-button {
+  padding: 6px 14px;
+  border: 1px solid var(--stroke);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 160ms ease, border-color 160ms ease, background 160ms ease;
+}
+
+.export-backup-button:hover {
+  color: var(--heading);
+  border-color: var(--accent);
+  background: rgba(62, 224, 176, 0.08);
+}
+
+.export-backup-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
 }
 
 .trip-grid {

@@ -1,19 +1,21 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
 import { fetchCurrencies, fetchRate } from './api/frankfurter'
 import { CurrencySelect } from './components/CurrencySelect'
+import {
+  deleteStoredExpenses,
+  downloadBackupFile,
+  getStoredExpenses,
+  getStoredTrips,
+  saveStoredExpenses,
+  saveStoredTrips,
+} from './services/storage'
 import type { Currency, ExchangeRate } from './types/currency'
 import type { Expense, Trip } from './types/trip'
 import { formatMoney, formatRate, parseAmount } from './utils/formatters'
 import './App.css'
 function QuickExpenses({ trip }: { trip: Trip }) {
-  const storageKey = `aurelia-expenses-${trip.id}`
-
   const [expenses, setExpenses] = useState<Expense[]>(() => {
-    try {
-      return JSON.parse(localStorage.getItem(storageKey) ?? '[]') as Expense[]
-    } catch {
-      return []
-    }
+    return getStoredExpenses(trip.id).data
   })
 
   const [description, setDescription] = useState('')
@@ -52,7 +54,11 @@ function QuickExpenses({ trip }: { trip: Trip }) {
       }
 
       const updated = [expense, ...expenses]
-      localStorage.setItem(storageKey, JSON.stringify(updated))
+      const saveResult = saveStoredExpenses(trip.id, updated)
+      if (!saveResult.success) {
+        setError(saveResult.error ?? 'Could not save this expense.')
+        return
+      }
       setExpenses(updated)
       setDescription('')
       setAmount('')
@@ -65,7 +71,7 @@ function QuickExpenses({ trip }: { trip: Trip }) {
 
   function removeExpense(id: string) {
     const updated = expenses.filter((expense) => expense.id !== id)
-    localStorage.setItem(storageKey, JSON.stringify(updated))
+    saveStoredExpenses(trip.id, updated)
     setExpenses(updated)
   }
 
@@ -160,13 +166,9 @@ function QuickExpenses({ trip }: { trip: Trip }) {
 }
 
 function TripsDashboard() {
-  const [trips, setTrips] = useState<Trip[]>(() => {
-    try {
-      return JSON.parse(localStorage.getItem('aurelia-trips') ?? '[]') as Trip[]
-    } catch {
-      return []
-    }
-  })
+  const [initialResult] = useState(() => getStoredTrips())
+  const [storageError, setStorageError] = useState<string | null>(initialResult.error)
+  const [trips, setTrips] = useState<Trip[]>(initialResult.data)
 
   const [name, setName] = useState('')
   const [destination, setDestination] = useState('')
@@ -191,8 +193,14 @@ function TripsDashboard() {
     }
 
     const updatedTrips = [newTrip, ...trips]
+    const saveResult = saveStoredTrips(updatedTrips)
+    if (!saveResult.success) {
+      setStorageError(saveResult.error ?? 'Could not save trip.')
+      return
+    }
+
     setTrips(updatedTrips)
-    localStorage.setItem('aurelia-trips', JSON.stringify(updatedTrips))
+    setStorageError(null)
 
     setName('')
     setDestination('')
@@ -201,10 +209,18 @@ function TripsDashboard() {
   function deleteTrip(tripId: string) {
     const updatedTrips = trips.filter((trip) => trip.id !== tripId)
   
+    saveStoredTrips(updatedTrips)
+    deleteStoredExpenses(tripId)
     setTrips(updatedTrips)
-    localStorage.setItem('aurelia-trips', JSON.stringify(updatedTrips))
-    localStorage.removeItem(`aurelia-expenses-${tripId}`)
   }
+
+  function handleExportBackup() {
+    const ok = downloadBackupFile()
+    if (!ok) {
+      setStorageError('Could not export backup file.')
+    }
+  }
+
   return (
     <section className="trips-dashboard">
       <div className="trips-heading">
@@ -212,6 +228,12 @@ function TripsDashboard() {
         <h2>Trips</h2>
         <p>Keep your travel memories and spending in one place.</p>
       </div>
+
+      {storageError && (
+        <div className="banner error" role="alert">
+          <p>{storageError}</p>
+        </div>
+      )}
 
       <form className="trip-form" onSubmit={saveTrip}>
         <h3>Create a trip</h3>
@@ -270,7 +292,19 @@ function TripsDashboard() {
       </form>
 
       <div className="trip-list">
-        <h3>Your trips ({trips.length})</h3>
+        <div className="trip-list-header">
+          <h3>Your trips ({trips.length})</h3>
+          {trips.length > 0 && (
+            <button
+              type="button"
+              className="export-backup-button"
+              onClick={handleExportBackup}
+              title="Download a JSON backup of your trips and expenses"
+            >
+              Export backup (JSON)
+            </button>
+          )}
+        </div>
 
         {trips.length === 0 ? (
           <p className="empty-trips">
